@@ -73,6 +73,7 @@ object HotcellUtils {
       return 26
   }
 
+  // Finding the Getis-ord z-score of the points data
   def getGScore (x: Int, y: Int, z: Int, mean: Double, std: Double, neighbors: Int, pointSum: Int, numCells: Int): Double =
   {
     val num = pointSum.toDouble - (mean * neighbors.toDouble)

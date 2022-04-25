@@ -44,27 +44,35 @@ object HotcellAnalysis {
     val numCells = (maxX - minX + 1)*(maxY - minY + 1)*(maxZ - minZ + 1)
 
     // YOU NEED TO CHANGE THIS PART
+
+    // User defined functions for counting number of neighbors and checking getis-ord score
     spark.udf.register("countNeighbors", (minX: Int, minY: Int, minZ: Int, maxX: Int, maxY: Int, maxZ: Int, inputX: Int, inputY: Int, inputZ: Int) => ((HotcellUtils.getNeighbors(minX, minY, minZ, maxX, maxY, maxZ, inputX, inputY, inputZ))))
     spark.udf.register("checkGScore", (x: Int, y: Int, z: Int, mean:Double, std: Double, neighbors: Int, pointSum: Int, numCells: Int) => ((HotcellUtils.getGScore(x, y, z, mean, std, neighbors, pointSum, numCells))))
 
+    // Query to get all the points in the given range of coordinates
     val rangeQuery: String = "select x,y,z from pickupInfo where (x between "+minX+" and "+maxX+") and (y between "+minY+" and "+maxY+") and (z between "+minZ+" and "+maxZ+") order by z,y,x"
     val rangeCells = spark.sql(rangeQuery)
     rangeCells.createOrReplaceTempView("rangeResult")
 
+    // Query to get the number of points in each cell
     val pointQuery: String = "select x, y, z, count(*) as pointsCount from rangeResult group by z, y, x order by z, y, x"
     val pointData = spark.sql(pointQuery)
     pointData.createOrReplaceTempView("pointResult")
 
+    // Query to get the sum of the points data and the squares sum of points data
     val pointSumQuery: String = "select count(*) as countVal, sum(pointsCount) as pointsSum, sum(pow(pointsCount, 2)) as pointsSquaredSum from pointResult"
     val pointsSumData = spark.sql(pointSumQuery)
 
+    // Query to get the number of neighbors which have high cluster spatiality
     val neighborQuery: String = "select countNeighbors(" + minX + "," + minY + "," + minZ + "," + maxX + "," + maxY + "," + maxZ + "," + " pr1.x, pr1.y, pr1.z) as neighbors, pr1.x as x, pr1.y as y, pr1.z as z, sum(pr2.pointsCount) as pointsSum from pointResult as pr1, pointResult as pr2 where pr2.x in(pr1.x-1, pr1.x, pr1.x+1) and pr2.y in(pr1.y-1, pr1.y, pr1.y+1) and pr2.z in(pr1.z-1, pr1.z, pr1.z+1) group by pr1.z, pr1.y, pr1.x order by pr1.z, pr1.y, pr1.x"
     val neighborData = spark.sql(neighborQuery)
     neighborData.createOrReplaceTempView("neighborResult");
 
+    // Mean and Standard deviation of the point data used to find Getis-ord z-score
     val mean = (pointsSumData.first().getLong(1).toDouble / numCells.toDouble).toDouble
     val std = math.sqrt((pointsSumData.first().getDouble(2).toDouble / numCells.toDouble) - (mean.toDouble * mean.toDouble)).toDouble
 
+    // Calculating the Getis-ord z-score which determines the hotness of a cell, and fetch the 50 hottest cells
     val gScoreQuery: String = "select checkGScore(x, y, z, " + mean + ", " + std + ", neighbors, pointsSum," +numCells+ ") as getisOrdStat, x, y, z from neighborResult order by getisOrdStat desc limit 50"
     val gScoreData = spark.sql(gScoreQuery)
     val result = gScoreData.select(col("x"), col("y"), col("z"))

@@ -3,6 +3,8 @@ package cse511
 object HotzoneUtils {
 
   // YOU NEED TO CHANGE THIS PART
+
+  // Checking whether the given points lie in the boundary of the rectangle geometry
   def ST_Contains(queryRectangle: String, pointString: String ): Boolean = {
     if(queryRectangle.isEmpty || pointString.isEmpty)
       return false
